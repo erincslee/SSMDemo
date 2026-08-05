@@ -9,6 +9,9 @@ import numpy as np
 import os
 import subprocess
 import time
+import pyacvd
+from pyvistaqt import BackgroundPlotter
+import pyvista as pv
 
 def run_bcpd(source_mesh, #the source mesh (or reference mesh)
              target_mesh, #the target mesh (for target geometry)
@@ -67,32 +70,8 @@ def run_bcpd(source_mesh, #the source mesh (or reference mesh)
     
     return deformed_mesh,corresp_mesh
     
-    #Plot result
-    
-    # pl = pv.Plotter(notebook=False)
-    # pl.add_points(x_points,
-    #           style = 'points',
-    #           render_points_as_spheres=True,
-    #           point_size=3,
-    #           color = 'blue')
-    # # pl.add_points(y_points,
-    # #           style = 'points',
-    # #           render_points_as_spheres=True,
-    # #           point_size=3,
-    # #           color = 'red')
-    # pl.add_points(aligned_x,
-    #           style = 'points',
-    #           render_points_as_spheres=True,
-    #           point_size=5,
-    #           color = 'orange')   
-    # pl.add_points(new_points,
-    #           style = 'points',
-    #           render_points_as_spheres=True,
-    #           point_size=5,
-    #           color = 'black')   
-    # pl.show()
-
-def compute_mean_mesh(meshes): #list of PyVista Meshes that have same number of vertices
+def compute_mean_mesh(meshes, #list of PyVista Meshes that have same number of vertices
+                      resample_pts = None): #Number of points to resample to
     
     num_pts = np.array(meshes[0].points).shape[0]
     all_coords = np.zeros((len(meshes),num_pts*3))
@@ -110,4 +89,81 @@ def compute_mean_mesh(meshes): #list of PyVista Meshes that have same number of 
     mean_mesh = meshes[0].copy()    
     mean_mesh.points = mean_coords
     
+    #resample points for uniform spaciong
+    mean_mesh.acvd.remesh(n_clusters=resample_pts,
+                          subdivide=3)
+    
     return mean_mesh
+
+def plot_assess_registered_meshes(registered_mesh, #mesh deformed from ref_mesh
+                                  original_mesh, #original (target) mesh
+                                  ref_mesh): #reference (mean) mesh
+    
+    #Calculate surface-to-surface distances (from registered mesh)
+    _ = registered_mesh.compute_implicit_distance(original_mesh,inplace=True)
+    #Calculate surface-to-surface distances (from original mesh)
+    _ = original_mesh.compute_implicit_distance(registered_mesh,inplace=True)
+    
+    #Calculate ASSD for all points 
+    dist_registered = np.absolute(np.array(registered_mesh.GetPointData().GetArray('implicit_distance')))
+    dist_original = np.absolute(np.array(original_mesh.GetPointData().GetArray('implicit_distance')))
+    all_dists = np.concatenate((dist_registered,dist_original))
+    ASSD = np.mean(all_dists)
+    
+    #Create visual for each plotter
+    p = BackgroundPlotter(shape=(2,2))
+    
+    #Plot errors (for each point on original mesh)
+    p.subplot(0,0)
+    p.add_mesh(mesh = registered_mesh,color=[0.5, 0.5, 0.5],style='wireframe',show_edges=True,edge_color='k',opacity=[0.01])
+    p.add_mesh(mesh = original_mesh,scalars='implicit_distance',cmap='PRGn',clim=[-3,3])    
+    p.add_text(
+        f"Signed distances from points of original mesh, ASSD = {ASSD:.2f} mm",
+        position="upper_left",
+        font_size=12,
+        color="black",
+    )
+
+    #Plot errors (for each point on registered mesh)
+    p.subplot(0,1)
+    p.add_mesh(mesh = registered_mesh,scalars='implicit_distance',cmap='PRGn',clim=[-3,3],copy_mesh=True)
+    p.add_mesh(mesh = original_mesh,color=[0.5, 0.5, 0.5],style='wireframe',show_edges=True,edge_color='k',opacity=[0.01],copy_mesh=True)    
+    p.add_text(
+        f"Signed distances from points of registered mesh, ASSD = {ASSD:.2f} mm",
+        position="upper_left",
+        font_size=12,
+        color="black",
+    )
+    
+    #pick 20 random points to visualize correspondence
+    rng = np.random.default_rng()
+    random_numbers = rng.integers(low=0, high=len(ref_mesh.points)-1, size=20)
+    colours = np.random.rand(20,3)
+    
+    #Prepare for visualization in ref_mesh_pts
+    ref_mesh_pts = ref_mesh.points[random_numbers]
+    registered_mesh_pts = registered_mesh.points[random_numbers]   
+    
+    #Plot arbitrary points on mean mesh
+    p.subplot(1,0)
+    p.add_mesh(mesh = ref_mesh,color=[0.5, 0.5, 0.5],copy_mesh=True) 
+    p.add_points(points = ref_mesh_pts,scalars=colours, rgba=True,point_size=6,render_points_as_spheres=True)
+    p.add_text(
+        "Random points on reference mesh",
+        position="upper_left",
+        font_size=12,
+        color="black",
+    )
+    
+    #Plot the SAME arbitrary points on reference mesh
+    p.subplot(1,1)
+    p.add_mesh(mesh = registered_mesh,color=[0.5, 0.5, 0.5],copy_mesh=True) 
+    p.add_points(points = registered_mesh_pts,scalars=colours, rgba=True,point_size=6,render_points_as_spheres=True)
+    p.add_text(
+        "The same random points on registered mesh",
+        position="upper_left",
+        font_size=12,
+        color="black",
+    )
+    
+    return p

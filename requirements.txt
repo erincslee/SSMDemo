@@ -1,0 +1,5 @@
+numpy==2.5.1
+pyacvd==0.4.0
+pyvista==0.48.4
+pyvistaqt==0.12.0
+trimesh==5.0.0

@@ -2,9 +2,9 @@
 """
 Created on Wed Jul 29 17:48:05 2026
 
-create_pkl_file.py
+compile_input_meshes_0.py
 
-Combines shape data into a single .pkl file. Compiling open-access bone meshes 
+Combines mesh data into a single .pkl file. Compiling open-access bone meshes 
 available on the Queen's Borealis Dataverse (https://doi.org/10.5683/SP3/PKJDCL)
 accompanying the paper by Lee et al. 2025 (doi: 10.1016/j.jbiomech.2025.112932) 
 
@@ -29,6 +29,8 @@ PATTERN = "*_Scapula.stl"
 # Function to extract mesh info from a single STL
 # -----------------------------------------------------------------------
  
+#Only saving vertices and faces to reduce file size
+
 def load_mesh_info(stl_path: Path) -> dict:
     """Load a single STL file and extract mesh info relevant to SSM."""
     mesh = trimesh.load(stl_path, process=False)
@@ -76,6 +78,7 @@ for i, stl_path in enumerate(stl_files, start=1):
 # Save to pickle
 # -----------------------------------------------------------------------
  
+
 output_pickle.parent.mkdir(parents=True, exist_ok=True)
 with open(output_pickle, "wb") as f:
     pickle.dump(mesh_data, f)
